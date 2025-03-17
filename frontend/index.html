@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simple Token DApp</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        color: #333;
+      }
+      h1 {
+        color: #2c3e50;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      .container {
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      .section {
+        margin-bottom: 25px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #eee;
+      }
+      .button {
+        background-color: #3498db;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.3s;
+      }
+      .button:hover {
+        background-color: #2980b9;
+      }
+      .button:disabled {
+        background-color: #95a5a6;
+        cursor: not-allowed;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 15px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      .status {
+        padding: 10px;
+        margin-top: 10px;
+        border-radius: 4px;
+      }
+      .success {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .error {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+      }
+      .hidden {
+        display: none;
+      }
+      .network-status {
+        text-align: center;
+        margin-bottom: 20px;
+        font-size: 14px;
+      }
+      .token-info {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .token-info div {
+        padding: 10px;
+        background-color: #eee;
+        border-radius: 4px;
+      }
+      #transactions {
+        margin-top: 20px;
+      }
+      #transactions div {
+        padding: 10px;
+        margin-bottom: 10px;
+        background-color: #f5f5f5;
+        border-radius: 4px;
+        border-left: 4px solid #3498db;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Simple Token DApp</h1>
+
+    <div class="network-status" id="networkStatus">
+      Not connected to Ethereum
+    </div>
+
+    <div class="container">
+      <div class="section" id="connectionSection">
+        <h2>Connect to Ethereum</h2>
+        <p>Connect your wallet to interact with the Simple Token.</p>
+        <button id="connectButton" class="button">Connect Wallet</button>
+        <div id="connectionStatus" class="status hidden"></div>
+      </div>
+
+      <div class="section hidden" id="tokenInfoSection">
+        <h2>Token Information</h2>
+        <div class="token-info">
+          <div><strong>Name:</strong> <span id="tokenName">-</span></div>
+          <div><strong>Symbol:</strong> <span id="tokenSymbol">-</span></div>
+          <div>
+            <strong>Total Supply:</strong> <span id="tokenSupply">-</span>
+          </div>
+          <div>
+            <strong>Your Balance:</strong> <span id="userBalance">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section hidden" id="transferSection">
+        <h2>Transfer Tokens</h2>
+        <form id="transferForm">
+          <div>
+            <label for="recipientAddress">Recipient Address:</label>
+            <input
+              type="text"
+              id="recipientAddress"
+              placeholder="0x..."
+              required
+            />
+          </div>
+          <div>
+            <label for="transferAmount">Amount:</label>
+            <input
+              type="number"
+              id="transferAmount"
+              step="0.000001"
+              min="0"
+              placeholder="0.0"
+              required
+            />
+          </div>
+          <button type="submit" class="button">Transfer Tokens</button>
+        </form>
+        <div id="transferStatus" class="status hidden"></div>
+      </div>
+
+      <div class="section hidden" id="transactionsSection">
+        <h2>Recent Transactions</h2>
+        <div id="transactions"></div>
+      </div>
+    </div>
+
+    <script>
+      // Contract ABI (Application Binary Interface)
+      const tokenABI = [
+        "function name() view returns (string)",
+        "function symbol() view returns (string)",
+        "function decimals() view returns (uint8)",
+        "function totalSupply() view returns (uint256)",
+        "function balanceOf(address account) view returns (uint256)",
+        "function transfer(address recipient, uint256 amount) returns (bool)",
+        "event Transfer(address indexed from, address indexed to, uint256 value)",
+      ];
+
+      // Contract address (to be set after deployment)
+      const contractAddress = localStorage.getItem("contractAddress") || "";
+
+      // UI Elements
+      const connectButton = document.getElementById("connectButton");
+      const connectionStatus = document.getElementById("connectionStatus");
+      const networkStatus = document.getElementById("networkStatus");
+      const tokenInfoSection = document.getElementById("tokenInfoSection");
+      const transferSection = document.getElementById("transferSection");
+      const transactionsSection = document.getElementById(
+        "transactionsSection",
+      );
+      const tokenName = document.getElementById("tokenName");
+      const tokenSymbol = document.getElementById("tokenSymbol");
+      const tokenSupply = document.getElementById("tokenSupply");
+      const userBalance = document.getElementById("userBalance");
+      const transferForm = document.getElementById("transferForm");
+      const recipientAddress = document.getElementById("recipientAddress");
+      const transferAmount = document.getElementById("transferAmount");
+      const transferStatus = document.getElementById("transferStatus");
+      const transactions = document.getElementById("transactions");
+
+      // App state
+      let provider;
+      let signer;
+      let tokenContract;
+      let userAddress;
+      let connectedNetwork;
+
+      // Initialize the app
+      async function init() {
+        // Check if Ethereum provider exists (MetaMask)
+        if (window.ethereum) {
+          try {
+            // Create ethers provider
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+
+            // Get network information
+            const network = await provider.getNetwork();
+            connectedNetwork =
+              network.name === "unknown"
+                ? `Chain ID: ${network.chainId}`
+                : network.name;
+            networkStatus.textContent = `Network: ${connectedNetwork}`;
+
+            // Setup event listeners
+            setupEventListeners();
+
+            // Check if already connected
+            const accounts = await provider.listAccounts();
+            if (accounts.length > 0) {
+              await connectWallet();
+            }
+          } catch (error) {
+            console.error("Initialization error:", error);
+            showStatus(
+              connectionStatus,
+              "Failed to initialize app: " + error.message,
+              "error",
+            );
+          }
+        } else {
+          networkStatus.textContent =
+            "MetaMask not detected. Please install MetaMask.";
+          connectButton.disabled = true;
+        }
+
+        // Listen for contract address input if not already set
+        if (!contractAddress) {
+          setTimeout(() => {
+            const newAddress = prompt(
+              "Enter the deployed token contract address:",
+            );
+            if (newAddress && ethers.utils.isAddress(newAddress)) {
+              localStorage.setItem("contractAddress", newAddress);
+              window.location.reload();
+            } else {
+              showStatus(
+                connectionStatus,
+                "Please provide a valid contract address to continue",
+                "error",
+              );
+            }
+          }, 1000);
+        }
+      }
+
+      // Setup event listeners
+      function setupEventListeners() {
+        // Connect wallet button
+        connectButton.addEventListener("click", connectWallet);
+
+        // Transfer form submission
+        transferForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          await transferTokens();
+        });
+
+        // Listen for network changes
+        window.ethereum.on("chainChanged", () => {
+          window.location.reload();
+        });
+
+        // Listen for account changes
+        window.ethereum.on("accountsChanged", async (accounts) => {
+          if (accounts.length === 0) {
+            // User disconnected
+            resetUI();
+          } else {
+            // Account changed
+            await connectWallet();
+          }
+        });
+      }
+
+      // Connect wallet
+      async function connectWallet() {
+        try {
+          // Request account access
+          await window.ethereum.request({ method: "eth_requestAccounts" });
+
+          // Get signer
+          signer = provider.getSigner();
+          userAddress = await signer.getAddress();
+
+          // Update UI
+          connectButton.textContent = "Connected";
+          showStatus(
+            connectionStatus,
+            `Connected: ${formatAddress(userAddress)}`,
+            "success",
+          );
+
+          // Initialize contract if address is available
+          if (contractAddress) {
+            tokenContract = new ethers.Contract(
+              contractAddress,
+              tokenABI,
+              signer,
+            );
+
+            // Show token sections
+            tokenInfoSection.classList.remove("hidden");
+            transferSection.classList.remove("hidden");
+            transactionsSection.classList.remove("hidden");
+
+            // Load token info
+            await loadTokenInfo();
+
+            // Listen for transfer events
+            setupTransferEvents();
+          }
+        } catch (error) {
+          console.error("Connection error:", error);
+          showStatus(
+            connectionStatus,
+            "Failed to connect: " + error.message,
+            "error",
+          );
+        }
+      }
+
+      // Load token information
+      async function loadTokenInfo() {
+        try {
+          // Get token details
+          const name = await tokenContract.name();
+          const symbol = await tokenContract.symbol();
+          const totalSupply = await tokenContract.totalSupply();
+          const balance = await tokenContract.balanceOf(userAddress);
+
+          // Format values
+          const decimals = await tokenContract.decimals();
+          const formattedSupply = ethers.utils.formatUnits(
+            totalSupply,
+            decimals,
+          );
+          const formattedBalance = ethers.utils.formatUnits(balance, decimals);
+
+          // Update UI
+          tokenName.textContent = name;
+          tokenSymbol.textContent = symbol;
+          tokenSupply.textContent = `${formattedSupply} ${symbol}`;
+          userBalance.textContent = `${formattedBalance} ${symbol}`;
+        } catch (error) {
+          console.error("Error loading token info:", error);
+          showStatus(
+            connectionStatus,
+            "Failed to load token information: " + error.message,
+            "error",
+          );
+        }
+      }
+
+      // Transfer tokens
+      async function transferTokens() {
+        const recipient = recipientAddress.value;
+        const amount = transferAmount.value;
+
+        // Validate inputs
+        if (!ethers.utils.isAddress(recipient)) {
+          showStatus(transferStatus, "Invalid recipient address", "error");
+          return;
+        }
+
+        if (parseFloat(amount) <= 0) {
+          showStatus(transferStatus, "Amount must be greater than 0", "error");
+          return;
+        }
+
+        try {
+          // Show pending status
+          showStatus(transferStatus, "Transaction pending...", "info");
+
+          // Get decimals
+          const decimals = await tokenContract.decimals();
+
+          // Convert amount to token units
+          const tokenAmount = ethers.utils.parseUnits(amount, decimals);
+
+          // Send transaction
+          const tx = await tokenContract.transfer(recipient, tokenAmount);
+
+          // Show sent status
+          showStatus(
+            transferStatus,
+            `Transaction sent! Hash: ${tx.hash}`,
+            "info",
+          );
+
+          // Wait for transaction to be mined
+          await tx.wait();
+
+          // Update UI
+          showStatus(
+            transferStatus,
+            `Successfully transferred ${amount} tokens to ${formatAddress(
+              recipient,
+            )}!`,
+            "success",
+          );
+
+          // Refresh balance
+          await loadTokenInfo();
+
+          // Clear form
+          transferForm.reset();
+        } catch (error) {
+          console.error("Transfer error:", error);
+          showStatus(
+            transferStatus,
+            "Transfer failed: " + error.message,
+            "error",
+          );
+        }
+      }
+
+      // Setup transfer event listener
+      function setupTransferEvents() {
+        tokenContract.on("Transfer", async (from, to, value, event) => {
+          const decimals = await tokenContract.decimals();
+          const formattedValue = ethers.utils.formatUnits(value, decimals);
+          const symbol = await tokenContract.symbol();
+
+          // Only add to transactions if current user is involved
+          if (
+            from.toLowerCase() === userAddress.toLowerCase() ||
+            to.toLowerCase() === userAddress.toLowerCase()
+          ) {
+            // Create transaction element
+            const txElement = document.createElement("div");
+
+            if (from.toLowerCase() === userAddress.toLowerCase()) {
+              txElement.innerHTML = `Sent ${formattedValue} ${symbol} to ${formatAddress(
+                to,
+              )}`;
+            } else {
+              txElement.innerHTML = `Received ${formattedValue} ${symbol} from ${formatAddress(
+                from,
+              )}`;
+            }
+
+            // Add to transactions list
+            transactions.prepend(txElement);
+
+            // Refresh balance
+            await loadTokenInfo();
+          }
+        });
+      }
+
+      // Reset UI to disconnected state
+      function resetUI() {
+        connectButton.textContent = "Connect Wallet";
+        connectionStatus.classList.add("hidden");
+        tokenInfoSection.classList.add("hidden");
+        transferSection.classList.add("hidden");
+        transactionsSection.classList.add("hidden");
+      }
+
+      // Helper function to show status messages
+      function showStatus(element, message, type) {
+        element.textContent = message;
+        element.classList.remove("hidden", "success", "error", "info");
+        element.classList.add(type);
+      }
+
+      // Helper function to format address
+      function formatAddress(address) {
+        return `${address.substring(0, 6)}...${address.substring(
+          address.length - 4,
+        )}`;
+      }
+
+      // Initialize the app
+      window.addEventListener("load", init);
+    </script>
+  </body>
+</html>

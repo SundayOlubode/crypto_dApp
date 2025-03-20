@@ -15,9 +15,7 @@ This decentralized application (DApp) implements a standard ERC-20 token on the 
 
 ## Repository
 
-**GitHub Repository**: [https://github.com/SundayOlubode/crypto_dApp/blob/main/README.md](https://github.com/SundayOlubode/crypto_dApp/blob/main/README.md)
-
-Replace with your actual GitHub repository URL where the code is hosted.
+**GitHub Repository**: [https://github.com/SundayOlubode/crypto_dApp.git](https://github.com/SundayOlubode/crypto_dApp.git)
 
 ## Project Structure
 
@@ -49,8 +47,8 @@ simple-token-dapp/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/SundayOlubode/crypto_dApp/blob/main/README.md.git
-cd simple-token-dapp
+git clone https://github.com/SundayOlubode/crypto_dApp.git
+cd crypto_dApp
 ```
 
 ### 2. Install Dependencies
@@ -194,7 +192,7 @@ Then access http://localhost:8000 or http://localhost:8080 in your browser.
 ### 2. Connect to the DApp
 
 1. Open the frontend in your browser
-2. When prompted, enter the deployed contract address
+2. When prompted, enter the deployed contract address or continue with the existing one
 3. Connect your MetaMask wallet by clicking "Connect Wallet"
 4. Confirm the connection in the MetaMask popup
 

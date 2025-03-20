@@ -212,11 +212,18 @@
       let userAddress;
       let connectedNetwork;
 
+      // Check if Ethereum is available
+      function checkForEthereum() {
+        if (window.ethereum) {
+          return true;
+        }
+        return false;
+      }
+
       // Initialize the app
       async function init() {
-        // Check if Ethereum provider exists (MetaMask)
-        if (window.ethereum) {
-          try {
+        try {
+          if (window.ethereum) {
             // Create ethers provider
             provider = new ethers.providers.Web3Provider(window.ethereum);
 
@@ -236,36 +243,85 @@
             if (accounts.length > 0) {
               await connectWallet();
             }
-          } catch (error) {
-            console.error("Initialization error:", error);
-            showStatus(
-              connectionStatus,
-              "Failed to initialize app: " + error.message,
-              "error",
-            );
+          } else {
+            // Add user troubleshooting information
+            networkStatus.innerHTML =
+              "MetaMask not detected. Please install MetaMask or try the following:<br>" +
+              "1. Ensure MetaMask extension is enabled<br>" +
+              "2. Try refreshing the page<br>" +
+              "3. Make sure you're not opening this file directly (use a web server)<br>" +
+              "<button id='retryButton' class='button'>Retry Detection</button>";
+
+            // Add retry button functionality
+            document
+              .getElementById("retryButton")
+              .addEventListener("click", () => {
+                location.reload();
+              });
+
+            connectButton.disabled = true;
           }
-        } else {
-          networkStatus.textContent =
-            "MetaMask not detected. Please install MetaMask.";
-          connectButton.disabled = true;
+        } catch (error) {
+          console.error("Initialization error:", error);
+          showStatus(
+            connectionStatus,
+            "Failed to initialize app: " + error.message,
+            "error",
+          );
         }
 
         // Listen for contract address input if not already set
         if (!contractAddress) {
           setTimeout(() => {
-            const newAddress = prompt(
-              "Enter the deployed token contract address:",
-            );
-            if (newAddress && ethers.utils.isAddress(newAddress)) {
-              localStorage.setItem("contractAddress", newAddress);
-              window.location.reload();
-            } else {
-              showStatus(
-                connectionStatus,
-                "Please provide a valid contract address to continue",
-                "error",
-              );
-            }
+            // Create a more user-friendly dialog instead of using a prompt
+            const dialogHTML = `
+            <div id="addressDialog" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+              <div style="background: white; padding: 20px; border-radius: 8px; max-width: 500px; width: 90%;">
+                <h3 style="margin-top: 0; color: #2c3e50;">Contract Selection</h3>
+                <p>Please select a SimpleToken contract to interact with:</p>
+                <div style="margin: 20px 0;">
+                  <button id="useDefaultContract" class="button" style="display: block; width: 100%; margin-bottom: 10px;">
+                    Use Deployed Contract<br>
+                    <small style="font-size: 12px;">0xa130fDe57A31694DBC13d0fd920382bDf60A05E6</small>
+                  </button>
+                  <p style="text-align: center; margin: 10px 0;">OR</p>
+                  <input type="text" id="customContractAddress" placeholder="Enter your own contract address" style="width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box;">
+                  <button id="useCustomContract" class="button" style="display: block; width: 100%;">Use Custom Address</button>
+                </div>
+              </div>
+            </div>
+          `;
+
+            // Add the dialog to the body
+            const dialogContainer = document.createElement("div");
+            dialogContainer.innerHTML = dialogHTML;
+            document.body.appendChild(dialogContainer);
+
+            // Set up event listeners
+            document
+              .getElementById("useDefaultContract")
+              .addEventListener("click", () => {
+                const defaultAddress =
+                  "0xa130fDe57A31694DBC13d0fd920382bDf60A05E6";
+                localStorage.setItem("contractAddress", defaultAddress);
+                document.body.removeChild(dialogContainer);
+                window.location.reload();
+              });
+
+            document
+              .getElementById("useCustomContract")
+              .addEventListener("click", () => {
+                const customAddress = document
+                  .getElementById("customContractAddress")
+                  .value.trim();
+                if (customAddress && ethers.utils.isAddress(customAddress)) {
+                  localStorage.setItem("contractAddress", customAddress);
+                  document.body.removeChild(dialogContainer);
+                  window.location.reload();
+                } else {
+                  alert("Please enter a valid Ethereum address");
+                }
+              });
           }, 1000);
         }
       }
@@ -432,17 +488,52 @@
           transferForm.reset();
         } catch (error) {
           console.error("Transfer error:", error);
-          showStatus(
-            transferStatus,
-            "Transfer failed: " + error.message,
-            "error",
-          );
+
+          // Handle user rejection specifically
+          if (
+            error.code === "ACTION_REJECTED" ||
+            error.message.includes("user rejected") ||
+            error.message.includes("User denied")
+          ) {
+            showStatus(
+              transferStatus,
+              "Transaction canceled: You rejected the transaction in your wallet",
+              "error",
+            );
+          } else {
+            // Extract a cleaner error message
+            let errorMsg = "Transaction failed";
+
+            if (error.message) {
+              // Try to get just the first part of the error message before any technical details
+              const cleanMessage = error.message.split("(")[0].trim();
+              errorMsg = cleanMessage || "An error occurred";
+            }
+
+            showStatus(transferStatus, errorMsg, "error");
+          }
         }
       }
 
       // Setup transfer event listener
       function setupTransferEvents() {
+        // Remove any existing event listeners first to prevent duplicates
+        if (tokenContract.listenerCount("Transfer") > 0) {
+          tokenContract.removeAllListeners("Transfer");
+        }
+
+        // Create a set to track processed transaction hashes
+        const processedTxs = new Set();
+
         tokenContract.on("Transfer", async (from, to, value, event) => {
+          // Use transaction hash to prevent duplicate entries
+          if (processedTxs.has(event.transactionHash)) {
+            return; // Skip if we've already processed this transaction
+          }
+
+          // Add to processed set
+          processedTxs.add(event.transactionHash);
+
           const decimals = await tokenContract.decimals();
           const formattedValue = ethers.utils.formatUnits(value, decimals);
           const symbol = await tokenContract.symbol();
@@ -458,11 +549,11 @@
             if (from.toLowerCase() === userAddress.toLowerCase()) {
               txElement.innerHTML = `Sent ${formattedValue} ${symbol} to ${formatAddress(
                 to,
-              )}`;
+              )} <small>(Tx: ${formatAddress(event.transactionHash)})</small>`;
             } else {
               txElement.innerHTML = `Received ${formattedValue} ${symbol} from ${formatAddress(
                 from,
-              )}`;
+              )} <small>(Tx: ${formatAddress(event.transactionHash)})</small>`;
             }
 
             // Add to transactions list
@@ -497,8 +588,39 @@
         )}`;
       }
 
-      // Initialize the app
-      window.addEventListener("load", init);
+      // Start the application when everything is loaded
+      window.addEventListener("load", () => {
+        // Try detection immediately first
+        if (checkForEthereum()) {
+          setTimeout(init, 100); // Small delay to ensure everything is loaded
+        } else {
+          // If not detected immediately, try a few times with delay
+          let attempts = 0;
+          const checkInterval = setInterval(() => {
+            attempts++;
+            if (checkForEthereum()) {
+              clearInterval(checkInterval);
+              init();
+            } else if (attempts >= 3) {
+              clearInterval(checkInterval);
+              // After 3 attempts, provide more detailed troubleshooting
+              networkStatus.innerHTML =
+                "MetaMask not detected after multiple attempts. Please try:<br>" +
+                "1. Make sure MetaMask is installed and unlocked<br>" +
+                "2. Serve this file via a web server instead of opening it directly<br>" +
+                "3. Open developer console (F12) to check for errors<br>" +
+                "4. Try a different browser<br>" +
+                "<button id='retryButton' class='button'>Retry Detection</button>";
+
+              document
+                .getElementById("retryButton")
+                .addEventListener("click", () => {
+                  location.reload();
+                });
+            }
+          }, 500);
+        }
+      });
     </script>
   </body>
 </html>

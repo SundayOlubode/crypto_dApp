@@ -1,3 +1,47 @@
+# Hardhat artifacts and cache
+artifacts/
+cache/
+typechain/
+typechain-types/
+
+# Environment and config files
 .env
 /.env
-/node_modules
+.env.*
+!.env.example
+
+# Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
+# Hardhat deployment and verification
+deployments/
+
+# Coverage reports
+coverage/
+coverage.json
+
+# Build files
+dist/
+build/
+
+# IDE & OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Local development chain data
+.hardhat/
+
+# Generated script outputs
+out/
+temp/
